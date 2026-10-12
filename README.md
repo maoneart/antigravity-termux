@@ -61,9 +61,17 @@ Pada peluncuran pertama:
 
 ---
 
-## 📱 Kebutuhan Sistem
+## 📱 Kebutuhan Sistem & Download Termux
 
-- **Aplikasi Termux**: Versi terbaru (direkomendasikan dari [F-Droid](https://f-droid.org/packages/com.termux/) atau GitHub Termux, hindari versi Play Store yang usang).
+### 📥 Download Resmi Aplikasi Termux
+> ⚠️ **PENTING**: **Jangan mengunduh Termux dari Google Play Store** karena versinya sudah usang (tidak diperbarui sejak 2020) dan paket dependensinya akan menghasilkan error 404.
+
+Gunakan tautan rilis resmi berikut:
+* **[🚀 GitHub Releases (Direkomendasikan)](https://github.com/termux/termux-app/releases/latest)**: Unduh file APK terbaru (pilih `termux-app_..._arm64-v8a.apk` atau universal).
+* **[📱 F-Droid Store](https://f-droid.org/packages/com.termux/)**: Pasang melalui repositori F-Droid.
+
+### Spesifikasi Minimum:
+- **Aplikasi Termux**: Versi resmi terbaru dari GitHub / F-Droid.
 - **Arsitektur CPU**: `aarch64` (ARM 64-bit). Sebagian besar HP Android modern keluaran 2017 ke atas sudah mendukung arsitektur ini.
 - **Ruang Penyimpanan**: Minimal ~250 MB ruang kosong untuk paket glibc dan engine biner.
 - **Koneksi Internet**: Diperlukan saat instalasi dan saat AI berkomunikasi dengan Google Cloud.
