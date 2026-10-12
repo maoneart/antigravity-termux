@@ -67,42 +67,62 @@ validate_env() {
 install_dependencies() {
   info "Memeriksa paket & dependensi sistem..."
 
-  local NEEDED_PKGS=()
+  local BASE_PKGS=()
 
-  command -v curl >/dev/null 2>&1 || NEEDED_PKGS+=("curl")
-  command -v tar  >/dev/null 2>&1 || NEEDED_PKGS+=("tar")
+  command -v curl >/dev/null 2>&1 || BASE_PKGS+=("curl")
+  command -v tar  >/dev/null 2>&1 || BASE_PKGS+=("tar")
 
   # Check ca-certificates
-  if [[ ! -s "$PREFIX/etc/tls/cert.pem" ]]; then
-    NEEDED_PKGS+=("ca-certificates")
+  if [[ ! -s "$PREFIX/etc/tls/cert.pem" && ! -s "$PREFIX/etc/ssl/certs/ca-certificates.crt" ]]; then
+    BASE_PKGS+=("ca-certificates")
   fi
 
   # Check resolv-conf
   if [[ ! -r "$PREFIX/etc/resolv.conf" ]]; then
-    NEEDED_PKGS+=("resolv-conf")
-  fi
-
-  # Check glibc loader
-  if [[ ! -x "$PREFIX/glibc/lib/ld-linux-aarch64.so.1" ]]; then
-    NEEDED_PKGS+=("glibc-repo" "glibc")
+    BASE_PKGS+=("resolv-conf")
   fi
 
   # Check LSE atomics & QEMU requirement
   if ! grep -q "atomics" /proc/cpuinfo 2>/dev/null; then
     if ! command -v qemu-aarch64 >/dev/null 2>&1; then
       warn "CPU tidak memiliki dukungan hardware LSE atomics. Menyiapkan emulator qemu-user-aarch64..."
-      NEEDED_PKGS+=("qemu-user-aarch64")
+      BASE_PKGS+=("qemu-user-aarch64")
     fi
   fi
 
-  if [ ${#NEEDED_PKGS[@]} -gt 0 ]; then
-    info "Menginstal paket yang dibutuhkan: ${NEEDED_PKGS[*]}..."
-    pkg update -y >/dev/null 2>&1 || true
-    pkg install -y "${NEEDED_PKGS[@]}"
-    success "Paket dependensi berhasil dipasang."
-  else
-    success "Semua dependensi sistem lengkap."
+  if [ ${#BASE_PKGS[@]} -gt 0 ]; then
+    info "Menginstal paket dasar yang dibutuhkan: ${BASE_PKGS[*]}..."
+    DEBIAN_FRONTEND=noninteractive pkg install -y "${BASE_PKGS[@]}" < /dev/null || \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y "${BASE_PKGS[@]}" < /dev/null
   fi
+
+  # 2b. Glibc Check: glibc-repo MUST be installed before glibc package can be found
+  if [[ ! -x "$PREFIX/glibc/lib/ld-linux-aarch64.so.1" ]]; then
+    info "Menyiapkan runtime glibc untuk Termux..."
+    if [[ ! -f "$PREFIX/etc/apt/sources.list.d/glibc.list" ]]; then
+      info "Mengaktifkan repositori glibc-repo..."
+      DEBIAN_FRONTEND=noninteractive pkg install -y glibc-repo < /dev/null || \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y glibc-repo < /dev/null
+      pkg update -y < /dev/null || true
+    fi
+    info "Memasang paket glibc..."
+    DEBIAN_FRONTEND=noninteractive pkg install -y glibc < /dev/null || \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y glibc < /dev/null
+  fi
+
+  # 2c. Pastikan resolv.conf valid agar DNS tidak gagal
+  if [[ ! -s "$PREFIX/etc/resolv.conf" ]]; then
+    mkdir -p "$PREFIX/etc"
+    printf "nameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 1.1.1.1\n" > "$PREFIX/etc/resolv.conf"
+  fi
+
+  # 2d. Pastikan symlink cert.pem tersedia jika menggunakan cert standar
+  if [[ ! -s "$PREFIX/etc/tls/cert.pem" && -s "$PREFIX/etc/ssl/certs/ca-certificates.crt" ]]; then
+    mkdir -p "$PREFIX/etc/tls"
+    cp -f "$PREFIX/etc/ssl/certs/ca-certificates.crt" "$PREFIX/etc/tls/cert.pem" 2>/dev/null || true
+  fi
+
+  success "Semua dependensi sistem lengkap dan siap."
 }
 
 # 3. Download & Deploy Antigravity Standalone Binaries
@@ -131,8 +151,9 @@ install_engine() {
   [[ -f "$BIN_DIR/agy.va39" ]] && mv -f "$BIN_DIR/agy.va39" "$BIN_DIR/agy.va39.old" 2>/dev/null || true
 
   # Install binaries with executable permissions
-  install -m 0755 "$EXTRACT_DIR/agy" "$BIN_DIR/agy"
-  install -m 0755 "$EXTRACT_DIR/agy.va39" "$BIN_DIR/agy.va39"
+  cp -f "$EXTRACT_DIR/agy" "$BIN_DIR/agy"
+  cp -f "$EXTRACT_DIR/agy.va39" "$BIN_DIR/agy.va39"
+  chmod 755 "$BIN_DIR/agy" "$BIN_DIR/agy.va39"
 
   # Clean temporary files
   rm -rf "$EXTRACT_DIR" "$TMP_TAR"
@@ -141,7 +162,11 @@ install_engine() {
   # Setup friendly symlinks
   ln -sf "$BIN_DIR/agy" "$BIN_DIR/antigravity"
   ln -sf "$BIN_DIR/agy" "$BIN_DIR/antigrafity"
+  chmod 755 "$BIN_DIR/antigravity" "$BIN_DIR/antigrafity" 2>/dev/null || true
   success "Symlink alias dibuat: 'antigravity' & 'antigrafity'."
+
+  # Refresh shell command lookup hash table
+  hash -r 2>/dev/null || true
 }
 
 # 4. Verification & First-Run Setup
@@ -149,7 +174,7 @@ verify_install() {
   info "Memverifikasi integritas instalasi..."
   local VER_OUTPUT
   if VER_OUTPUT=$("$PREFIX/bin/agy" --version 2>/dev/null); then
-    success "Verifikasi berhasil: ${BOLD}${VER_OUTPUT}${RESET}"
+    success "Verifikasi berhasil: Antigravity CLI versi ${BOLD}${VER_OUTPUT}${RESET}"
   else
     warn "Biner terpasang namun belum dapat menampilkan versi langsung. Silakan coba jalankan 'agy'."
   fi
